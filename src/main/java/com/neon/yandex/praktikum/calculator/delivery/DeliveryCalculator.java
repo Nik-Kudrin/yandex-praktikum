@@ -2,7 +2,7 @@ package com.neon.yandex.praktikum.calculator.delivery;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.javamoney.moneta.FastMoney;
+import org.javamoney.moneta.Money;
 
 import javax.money.CurrencyUnit;
 import javax.money.Monetary;
@@ -14,10 +14,51 @@ import javax.money.MonetaryAmount;
 public class DeliveryCalculator {
 	
 	private static final Logger log = LogManager.getLogger(DeliveryCalculator.class.getName());
+	
+	public final MonetaryAmount minimumDeliveryCost;
 	public final CurrencyUnit baseCurrency;
 	
-	public DeliveryCalculator(final String currency) {
-		this.baseCurrency = Monetary.getCurrency(currency);
+	public DeliveryCalculator(final MonetaryAmount minimumDeliveryCost) {
+		if (minimumDeliveryCost == null) {
+			throw new IllegalArgumentException("Minimum delivery cost cannot be null");
+		}
+		
+		this.minimumDeliveryCost = minimumDeliveryCost;
+		this.baseCurrency = minimumDeliveryCost.getCurrency();
+	}
+	
+	private MonetaryAmount addMileageCost(final double distance) {
+		if (distance <= 0.0) {
+			throw new IllegalArgumentException("Distance cannot be 0 Km or negative");
+		}
+		
+		// TODO: comparision problem in number with floating point
+		if (distance <= 2) {
+			return Money.of(50, baseCurrency);
+		} else if (distance <= 10) {
+			return Money.of(100, baseCurrency);
+		} else if (distance <= 30) {
+			return Money.of(200, baseCurrency);
+		} else {
+			return Money.of(300, baseCurrency);
+		}
+	}
+	
+	private MonetaryAmount addSizeCost(final boolean isCargoOversize) {
+		return isCargoOversize ? Money.of(200, baseCurrency) : Money.of(100, baseCurrency);
+	}
+	
+	private MonetaryAmount addFragilityCost(final double distance, final boolean isCargoFragile)
+		throws IllegalArgumentException {
+		
+		if (isCargoFragile) {
+			if (distance > 30) {
+				throw new IllegalArgumentException("Transportation for fragile cargo is limited to 30 Km");
+			}
+			return Money.of(300, baseCurrency);
+		} else {
+			return Money.of(0, baseCurrency);
+		}
 	}
 	
 	public MonetaryAmount calculateDeliveryCost(
@@ -34,37 +75,22 @@ public class DeliveryCalculator {
 			isCargoFragile,
 			deliveryServiceLoad));
 		
+		if (deliveryServiceLoad == null) {
+			throw new IllegalArgumentException("Delivery service load must not be null");
+		}
+		
 		var totalCost = Monetary.getDefaultAmountFactory().setCurrency(baseCurrency).setNumber(0).create();
 		
-		// - более 30 км: +300 рублей к доставке;
-		//- до 30 км: +200 рублей к доставке;
-		//- до 10 км: +100 рублей к доставке;
-		//- до 2 км: +50 рублей к доставке;
-		if (distance < 2) {
-			totalCost = totalCost.add(FastMoney.of(50, baseCurrency));
-		} else if (distance < 10) {
-			totalCost = totalCost.add(FastMoney.of(100, baseCurrency));
-		} else if (distance < 30) {
-			totalCost = totalCost.add(FastMoney.of(200, baseCurrency));
-		} else {
-			totalCost = totalCost.add(FastMoney.of(300, baseCurrency));
-		}
-		
-		// - большие габариты: +200 рублей к доставке;
-		//- маленькие габариты: +100 рублей к доставке;
-		totalCost = isCargoOversize ?
-			totalCost.add(FastMoney.of(200, baseCurrency)) :
-			totalCost.add(FastMoney.of(100, baseCurrency));
-		
-		// Если груз хрупкий — +300 рублей к доставке. Хрупкие грузы нельзя возить на расстояние более 30 км;
-		if (isCargoFragile) {
-			if (distance > 30) {
-				throw new IllegalArgumentException("Transportation for fragile cargo is limited to 30 km");
-			}
-			totalCost = totalCost.add(FastMoney.of(300, baseCurrency));
-		}
-		
+		totalCost = totalCost.add(addMileageCost(distance));
+		totalCost = totalCost.add(addSizeCost(isCargoOversize));
+		totalCost = totalCost.add(addFragilityCost(distance, isCargoFragile));
 		totalCost = totalCost.multiply(deliveryServiceLoad.getCoefficient());
+		
+		if (totalCost.isLessThan(minimumDeliveryCost)) {
+			totalCost = minimumDeliveryCost;
+		}
+		
+		log.info("Delivery cost calculation has been finished. Amount is " + totalCost);
 		
 		return totalCost;
 	}
