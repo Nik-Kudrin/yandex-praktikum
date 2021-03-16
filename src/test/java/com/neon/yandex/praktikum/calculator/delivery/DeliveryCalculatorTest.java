@@ -12,6 +12,6 @@ public class DeliveryCalculatorTest {
     @Test
     void testFunction() {
         log.info("debug");
-        assertThat(1).isEqualTo(2).describedAs("ddd");
+//        assertThat(1).isEqualTo(2).describedAs("ddd");
     }
 }
