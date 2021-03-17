@@ -27,3 +27,4 @@ build
 
 # IntelliJ IDEA
 .idea
+/.jqwik-database
